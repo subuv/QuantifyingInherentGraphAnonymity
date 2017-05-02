@@ -1,1 +1,6 @@
-This folder contains all the graph files used for experimentation
+Listed below are the graph files used for experimentation. They are public datasets available as listed below.
+
+soc-Epinions1 - https://snap.stanford.edu/data/soc-Epinions1.html
+soc-Slashdot0811 - https://snap.stanford.edu/data/soc-Slashdot0811.html
+BlogCatalog3 - http://socialcomputing.asu.edu/datasets/BlogCatalog3
+terrornet_edges - Sample dataset for calibration purposes
