@@ -1,220 +1,226 @@
-from __future__ import division
 import numpy as np
 import pandas as pd
 import logging, sys
 from igraph import *
 import time
 import matplotlib.pyplot as plt
-import matplotlib.mlab as mlab
-import math
-from scipy.stats.stats import pearsonr
-from joblib import Parallel, delayed
-from scipy.signal import argrelextrema
+from pympler.tracker import SummaryTracker
+import multiprocessing as mp
+import itertools
+from scipy import spatial
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+
+num_cpu = mp.cpu_count()
+print ("The number of processors is: ", num_cpu)
 
 def linkage_covariance(file_path, order_no):
-	ori_igraph = Graph.Read_Ncol(file_path, directed=True)
-	logging.info('Parsing the original graph to get the number of nodes')
+	terrorist_igraph = Graph.Read(file_path, format="edgelist", directed=True)
+	es = EdgeSeq(terrorist_igraph)
+	logging.info('Got the file details. Reading file...')
+
+	logging.info('Getting the neighborhood for the order...')
+	#tracker = SummaryTracker()
+	#notn = terrorist_igraph.neighborhood(vertices=None, order=int(order_no), mode="all")
+	#tracker.print_diff()
+	logging.info('Got the neighborhood for the order successfully')
+	#logging.debug(notn)
+
+	logging.info('Stringing up the edgelist from the neighborhood')
+	terror_edge_array = [e.tuple for e in terrorist_igraph.es]
+	#tuple(terror_edge_array)
+	#print terror_edge_array
+	logging.info('Stringed up the edgelist from the neighborhood successfully')
+	logging.debug(terror_edge_array)
 	
-	n_ori = ori_igraph.vcount()
-	e_ori = ori_igraph.ecount()
-	ori_igraph_degree = ori_igraph.vs.degree(mode=ALL, loops=False)
-
-	logging.info(n_ori)
+	logging.info('Creating a graph from the edgelist of neighborhood')
+	terrorist_igraph = Graph.TupleList(directed=True, edges = terror_edge_array)
+	logging.info('Created a graph from the edgelist of neighborhood successfully')
 	
-	er_igraph = Graph.Erdos_Renyi(n=n_ori, m=e_ori, directed=False, loops=False)
+	logging.info('Computing the Adjacency matrix of the input graph')
+	terrorist_adjacency = terrorist_igraph.get_adjacency()
+	logging.info('Computed the Adjacency matrix of the input graph successfully')
 
-	logging.info('Parsing the er graph to get the number of nodes')
+	# print the header row
+	logging.debug('Adjacency Matrix of the graph!\n')
+	logging.debug(terrorist_adjacency)
 
-	n_er = er_igraph.vcount()
+	logging.info('Adjacency matrix in readable type')
+	d = np.array(terrorist_adjacency.data)
+	d = d.astype(float)
 
-	logging.info(n_er)
+	#hop = order in call below
+	# ax <- neighborhood(g,order=1,neighborhood.type="total",mode="graph",partial=T)
+ 	
+ 	#Use the shape command to get the dimensions of the matrix
+	logging.info('Parsing the graph to get the number of nodes')
+	[m, n] = d.shape
+	# header_row = list()
+	# logging.info('Creating a header row for the number of nodes')
+	# for i in range(0,n):
+	# 	header_row.append(i+1)
 	
-	random_igraph = Graph.Degree_Sequence(out=ori_igraph_degree, method="simple")
-
-	logging.info('Parsing the random graph to get the number of nodes')
-
-	n_random = random_igraph.vcount()
-
-	logging.info(n_random)
+	logging.info('Graph parsed successfully and header row created!')
 	
-	logging.info('Creating a dummy linkage covariance matrix original')
+	# print the header row
+	# logging.debug('Header Row!\n')
+	# logging.debug(header_row)
 
-	linkage_covariance_matrix_ori = np.zeros((n_ori, n_ori))
-	linkage_covariance_matrix_er = np.zeros((n_er, n_er))
-	linkage_covariance_matrix_random = np.zeros((n_random, n_random))
+	logging.info('Insert the header row above')
+	#colnames(ax) <- c(1:63)
+	input_graph = d
+	#print input_graph
+	# TO-DO ------ not working!!! - Start
+	#np.insert(input_graph, 1, header_row, axis=0)
+	# TO-DO ------ not working!!! - End
 
-	logging.info('Collecting the neighbor sets of the original graph for the linkage covariance matrix')
+	logging.info('Header row inserted!!')
+	
+	logging.info('Finding the sum of all the values in each row')
+	#ax.r <- rowSums(ax)
+	input_graph_rowsums = input_graph.sum(axis=1)
 
-	ori_igraph = Graph.Read_Edgelist(file_path, directed=True)
+	logging.info('Found the sum!')
+	logging.debug(input_graph_rowsums)
+	#LC <- matrix(0,n,n)
+	# matrix of zeroes
+	linkage_covariance_matrix = np.zeros((n, n))
+	
+	logging.info('Find the linkage covariance and compute the linkage covariance matrix')
 
-	#ori_igraph.delete_vertices((6,11))
-	
-	#neisets_ori = [set(ori_igraph.neighbors(i)) for i in xrange(n_ori)]
-	neisets_ori = Parallel(n_jobs=2, backend="threading")(delayed(set)(ori_igraph.neighbors(i)) for i in xrange(n_ori))
-	#neisets_er = [set(er_igraph.neighbors(i)) for i in xrange(n_er)]
-	neisets_er = Parallel(n_jobs=2, backend="threading")(delayed(set)(er_igraph.neighbors(i)) for i in xrange(n_er))
-	#neisets_random = [set(random_igraph.neighbors(i)) for i in xrange(n_random)]
-	neisets_random = Parallel(n_jobs=2, backend="threading")(delayed(set)(random_igraph.neighbors(i)) for i in xrange(n_er))
+	# arglist = []
+	# try :
+	#     arglist.append((linkage_covariance_matrix, input_graph, input_graph_rowsums, n))
+	#     pool = mp.Pool(num_cpu)
+	#     result = pool.apply_async(compute_lcm, args=arglist)
+	# except Exception as e:
+	# 	logging.error(e)
+	# 	logging.debug("There was some exception when parallelizing the matrix computation")
+	# 	pool.terminate()
+	# finally:
+	# 	pool.close()
+	# 	pool.join()
 
-	logging.info('Populating the linkage covariance matrix original')
-	
-	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_ori,k=0)).T:
-		if (v1 != v2):
-			common_neis_ori = neisets_ori[v1].intersection(neisets_ori[v2])
-			#linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori) - (len(neisets_ori[v1]) * len(neisets_ori[v2]))/n_ori**2
-			linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori)
-			linkage_covariance_matrix_ori[v2, v1] = linkage_covariance_matrix_ori[v1, v2]
-	
-	logging.info('Populating the linkage covariance matrix ER')
-	
-	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_er,k=0)).T:
-		if (v1 != v2):
-			try:
-				common_neis_er = neisets_er[v1].intersection(neisets_er[v2])
-				linkage_covariance_matrix_er[v1, v2] = (len(common_neis_er)/n_er) - (len(neisets_er[v1]) * len(neisets_er[v2]))/n_er**2
-				linkage_covariance_matrix_er[v2, v1] = linkage_covariance_matrix_er[v1, v2]
-			except:
-				continue
+	# logging.info('Linkage covariance matrix done successfully by parallelization')
 
-	logging.info('Populating the linkage covariance matrix random')
+	# linkage_covariance_matrix = result.get()
+	linkage_covariance_matrix = np.cov(input_graph, numpy.transpose(input_graph), ddof=0)[0][1]
+	np.fill_diagonal(linkage_covariance_matrix, 0)
 	
-	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_random,k=0)).T:
-		if (v1 != v2):
-			try:
-				common_neis_random = neisets_random[v1].intersection(neisets_random[v2])
-				linkage_covariance_matrix_random[v1, v2] = (len(common_neis_random)/n_random) - (len(neisets_random[v1]) * len(neisets_random[v2]))/n_random**2
-				linkage_covariance_matrix_random[v2, v1] = linkage_covariance_matrix_random[v1, v2]
-			except:
-				continue
+	logging.debug('The linkage_covariance_matrix!\n')
+	logging.debug(linkage_covariance_matrix)
+	logging.debug('The input_graph!\n')
+	logging.debug(input_graph)
 
-	logging.info('Linkage covariance matrix done')
-	
-	logging.debug('The linkage_covariance_matrix original!\n')
-	logging.debug(linkage_covariance_matrix_ori)
-	
-	logging.debug('The linkage_covariance_matrix ER!\n')
-	logging.debug(linkage_covariance_matrix_er)
-	
-	logging.debug('The linkage_covariance_matrix random!\n')
-	logging.debug(linkage_covariance_matrix_random)
-	
+	# create sorted LC matrix, first sort within each row
+	#RLC.o <- matrix(0,n,n)
+	#rownames(RLC.o) <- c(1:63)
+	#for (i in 1:n) {RLC.o[i,] <- sort(LC[i,],decreasing=T)}
+
 	logging.info('Sorting each row in linkage covariance matrix in descending order')
 	
-	for i in range(0, n_ori):
-		linkage_covariance_matrix_ori[linkage_covariance_matrix_ori[i, :][::-1].sort()]
-	
-	for i in range(0, n_er):
-		linkage_covariance_matrix_er[linkage_covariance_matrix_er[i, :][::-1].sort()]
-	
-	for i in range(0, n_random):
-		linkage_covariance_matrix_random[linkage_covariance_matrix_random[i, :][::-1].sort()]
-	
+	idx = linkage_covariance_matrix[:, 0].argsort()
+	rlc = np.take(linkage_covariance_matrix, idx, axis=1)
+	#rlc = np.sort(linkage_covariance_matrix, axis=1)
+	rlc = np.fliplr(rlc)
+
 	logging.info('Sorted the matrix successfully')
 	
-	logging.debug('RLC Original!\n')
-	logging.debug(linkage_covariance_matrix_ori)
+	logging.debug('RLC!\n')
+	logging.debug(rlc)
 
-	logging.debug('RLC ER!\n')
-	logging.debug(linkage_covariance_matrix_er)
+	sort_key = list()
+	#ascending_key = list()
+	for i in range(0,n):
+		sort_key.append(i)
+		idx = rlc[i,:].argsort()
+		#ascending_key.append(False)
 
-	logging.debug('RLC Random!\n')
-	logging.debug(linkage_covariance_matrix_random)
-
-	logging.info('Use a sort key and sort the matrix by each column in descending order')
+	rlc = np.take(rlc, idx, axis=0)
+	df_rlc = pd.DataFrame(rlc)
 	
-	rlc_ori = linkage_covariance_matrix_ori.copy()
-	rlc_er = linkage_covariance_matrix_er.copy()
-	rlc_random = linkage_covariance_matrix_random.copy()
+	logging.debug('RLC Data Framed!\n')
+	logging.debug(df_rlc)
+	
+	logging.info('Use a sort key and sort the matrix by each column in ascending order')
+	
+	# idx = rlc[:, ].argsort()
+	# print idx
+	# rlc = np.take(rlc, idx, axis=1)
+	
+	#rlc[rlc[:, sort_key].argsort()]
 
-	rlc_ori = rlc_ori[rlc_ori[:, 0].argsort()][::-1]
-	rlc_er = rlc_er[rlc_er[:, 0].argsort()][::-1]
-	rlc_random = rlc_random[rlc_random[:, 0].argsort()][::-1]
+	# df_rlc.sort_values(sort_key, ascending=ascending_key, inplace=True)
+	# rlc = df_rlc.as_matrix()
+	
+	logging.debug('RLC after making it a matrix with sorted order!\n')
+	logging.debug(rlc)
 
 	logging.info('Sorted the matrix by each column in ascending order')
 	
-	logging.debug('RLC original after making it a matrix with sorted order!\n')
-	logging.debug(rlc_ori)
-
-	logging.debug('RLC ER after making it a matrix with sorted order!\n')
-	logging.debug(rlc_er)
-	
-	logging.debug('RLC Random after making it a matrix with sorted order!\n')
-	logging.debug(rlc_random)
+	#now normalize by the L2 modulus
+	#for (i in 1:n) {
+	#  RLC.o[i,] <- RLC.o[i,]/sqrt(sum(RLC.o[i,]^2))
+	#}
 
 	logging.info('Normalize the matrix now!')
 
-	rownorm_ori = np.linalg.norm(rlc_ori, axis=1)
-	rownorm_er = np.linalg.norm(rlc_er, axis=1)
-	rownorm_random = np.linalg.norm(rlc_random, axis=1)
-	
-	for i in range(0, n_ori):
-		rlc_ori[i,] = rlc_ori[i,]/rownorm_ori[i]
-		rlc_er[i,] = rlc_er[i,]/rownorm_er[i]
-		rlc_random[i,] = rlc_random[i,]/rownorm_random[i]
+	for i in range(0, n):
+		rlc[i,] = rlc[i,]/np.sqrt(np.sum(np.square(rlc[i,])))
 
-	rlc_er[np.isnan(rlc_er)]=0
-	rlc_random[np.isnan(rlc_random)]=0
-
-	logging.debug('Normalized sum of squares of link covariances of the original graph!\n')
-	logging.debug(rlc_ori)
-
-	logging.debug('Normalized sum of squares of link covariances of the ER graph!\n')
-	logging.debug(rlc_er)
-
-	logging.debug('Normalized sum of squares of link covariances of the random graph!\n')
-	logging.debug(rlc_random)
+	logging.debug('Normalized sum of squares of link covariances of the input graph!\n')
+	logging.debug(df_rlc)
 
 	logging.info('Normalized the matrix successfully')
 
-	pearson_distance_ori = list()
-	for i in range(1, n_ori):
-		if math.isnan(pearsonr(rlc_ori[i,:], rlc_ori[i,:])[0]) == False:
-			pearson_distance_ori.append(pearsonr(rlc_ori[0,:], rlc_ori[i,:])[0])
+	rlc_pd_df = pd.DataFrame(data=rlc, index=None, columns=None)
+	
+	return rlc_pd_df
 
-	pearson_distance_er = list()
-	for i in range(1, n_er):
-		if math.isnan(pearsonr(rlc_ori[i,:], rlc_er[i,:])[0]) == False:
-			pearson_distance_er.append(pearsonr(rlc_er[0,:], rlc_er[i,:])[0])
+def h_dist(file_path1, file_path2, order):
+	df_rlc_original = linkage_covariance(file_path1, order)
+	df_rlc_anon = linkage_covariance(file_path2, order)
+	df_rlc_abs = df_rlc_anon.subtract(df_rlc_original, fill_value=0)
+	#distance = spatial.distance.cdist(df_rlc_original, df3, 'euclidean')
+	df_rlc_abs = df_rlc_abs.abs()
+	sh_df = shannon(df_rlc_abs)
+	#sh_df = sh_df.cumsum()
+	plt.figure()
+	sh_df.plot()
+	# logging.info("Distance computed")
+	# print distance
+	# logging.info(distance)
 
-	pearson_distance_random = list()
-	for i in range(1, n_random):
-		if math.isnan(pearsonr(rlc_ori[i,:], rlc_random[i,:])[0]) == False:
-			pearson_distance_random.append(pearsonr(rlc_random[0,:], rlc_random[i,:])[0])
+def shannon(df):
+	entropy = -(np.sum((df * np.log(df))/np.log(2.0), dtype=np.float64))
+	return entropy
 
-	np.set_printoptions(threshold='nan')
-
-	logging.info("The pearson distance between first row and various rows of the original graph!\n")
-	logging.info(np.sort(pearson_distance_ori))
-
-	logging.info("The pearson distance between first row and various rows of the ER graph!\n")
-	logging.info(np.sort(pearson_distance_er))
-
-	logging.info("The pearson distance between first row and various rows of the Random graph!\n")
-	logging.info(np.sort(pearson_distance_random))
-
-	with open("output.txt", "a") as myfile:
-		myfile.write("Original\n")
-		myfile.write(str(np.sort(pearson_distance_ori)))
-		myfile.write("\nER\n")
-		myfile.write(str(np.sort(pearson_distance_er)))
-		myfile.write("\nRandom\n")
-		myfile.write(str(np.sort(pearson_distance_random)))
-
-	return "Success"
-
-def h_dist(file_path, order):
-	df_rlc_original = linkage_covariance(file_path, order)
-	print df_rlc_original
+def compute_lcm(args):
+	logging.info("Inside parallelization code")
+	start = time.time()
+	try:
+		lc_matrix, i_gr, i_gr_r, dim = args
+		for i in range(0, dim-1):
+			for j in range(1, dim):
+				#LC[i,j] <- sum(ax[i,]*ax[j,])/n - ax.r[i]*ax.r[j]/n^2 ; LC[j,i] <- LC[i,j]
+				lc_matrix[i,j] = np.cov(i_gr[i,],i_gr[j,], ddof = 0)[0][1]
+				lc_matrix[j,i] = lc_matrix[i,j]
+		print("--- %s seconds ---" % (time.time() - start))
+	except Exception as e:
+		logging.error("Unexpected exception inside parallel processing: ", e)
+	finally:
+		logging.info("Done parallelizing. Returning the object now!")
+		return lc_matrix
 
 def main():
-	print "rankedlinkcharacteristicvectorL2normed_er_random: Let us calculate the linkage covariance of the graph"
-	original_graph_path = raw_input("Path of the graph file original?\n")
+	print "rankedlinkcharacteristicvectorL2normed_el: Let us calculate the linkage covariance of the graph"
+	original_graph_path = raw_input("Path of the graph file 1?\n")
+	anon_graph_path = raw_input("Path of the graph file 2?\n")
 	order = raw_input("Order of hops?\n")
+	mp.freeze_support()
 	start_time = time.time()
-	h_dist(original_graph_path, order)
+	h_dist(original_graph_path, anon_graph_path, order)
 	print("--- %s seconds ---" % (time.time() - start_time))
 
 main()
-# plt.show()
+plt.show()
