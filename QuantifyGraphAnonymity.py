@@ -8,9 +8,8 @@ import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 import math
 from scipy.stats.stats import pearsonr
-from collections import defaultdict
-import itertools
-import datetime
+from joblib import Parallel, delayed
+from scipy.signal import argrelextrema
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
@@ -50,89 +49,45 @@ def linkage_covariance(file_path, order_no):
 
 	ori_igraph = Graph.Read_Edgelist(file_path, directed=True)
 
-	d1 = defaultdict(list)
-	d2 = defaultdict(list)
-	d3 = defaultdict(list)
-	
-	ori_edgelist = ori_igraph.get_edgelist()
-	er_edgelist = er_igraph.get_edgelist()
-	random_edgelist = random_igraph.get_edgelist()
-
-	for k, v in ori_edgelist:
-		d1[k].append(v)
-
-	for k, v in er_edgelist:
-		d2[k].append(v)
-
-	for k, v in random_edgelist:
-		d3[k].append(v)
-
 	#ori_igraph.delete_vertices((6,11))
 	
 	#neisets_ori = [set(ori_igraph.neighbors(i)) for i in xrange(n_ori)]
-	#neisets_ori = Parallel(n_jobs=2, backend="threading")(delayed(set)(ori_igraph.neighbors(i)) for i in xrange(n_ori))
-	neisets_ori = dict((k, tuple(v)) for k, v in d1.iteritems())
+	neisets_ori = Parallel(n_jobs=2, backend="threading")(delayed(set)(ori_igraph.neighbors(i)) for i in xrange(n_ori))
 	#neisets_er = [set(er_igraph.neighbors(i)) for i in xrange(n_er)]
-	#neisets_er = Parallel(n_jobs=2, backend="threading")(delayed(set)(er_igraph.neighbors(i)) for i in xrange(n_er))
-	neisets_er = dict((k, tuple(v)) for k, v in d2.iteritems())
+	neisets_er = Parallel(n_jobs=2, backend="threading")(delayed(set)(er_igraph.neighbors(i)) for i in xrange(n_er))
 	#neisets_random = [set(random_igraph.neighbors(i)) for i in xrange(n_random)]
-	#neisets_random = Parallel(n_jobs=2, backend="threading")(delayed(set)(random_igraph.neighbors(i)) for i in xrange(n_er))
-	neisets_random = dict((k, tuple(v)) for k, v in d3.iteritems())
+	neisets_random = Parallel(n_jobs=2, backend="threading")(delayed(set)(random_igraph.neighbors(i)) for i in xrange(n_er))
 
 	logging.info('Populating the linkage covariance matrix original')
-
-	lcm_ori_list = list(itertools.combinations(neisets_ori.keys(),2))
-
-	while lcm_ori_list:
-		(v1, v2) = lcm_ori_list.pop()
-		common_neis_ori = set(neisets_ori[v1]) & set(neisets_ori[v2])
-		#linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori) - (len(neisets_ori[v1]) * len(neisets_ori[v2]))/n_ori**2
-		linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori)
-		linkage_covariance_matrix_ori[v2, v1] = linkage_covariance_matrix_ori[v1, v2]
-
-	# for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_ori,k=0)).T:
-	# 	if (v1 != v2):
-	# 		common_neis_ori = set(neisets_ori[v1]) & set(neisets_ori[v2])
-	# 		linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori) - (len(neisets_ori[v1]) * len(neisets_ori[v2]))/n_ori**2
-	# 		linkage_covariance_matrix_ori[v2, v1] = linkage_covariance_matrix_ori[v1, v2]
+	
+	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_ori,k=0)).T:
+		if (v1 != v2):
+			common_neis_ori = neisets_ori[v1].intersection(neisets_ori[v2])
+			#linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori) - (len(neisets_ori[v1]) * len(neisets_ori[v2]))/n_ori**2
+			linkage_covariance_matrix_ori[v1, v2] = (len(common_neis_ori)/n_ori)
+			linkage_covariance_matrix_ori[v2, v1] = linkage_covariance_matrix_ori[v1, v2]
 	
 	logging.info('Populating the linkage covariance matrix ER')
 	
-	lcm_er_list = list(itertools.combinations(neisets_er.keys(),2))
-	
-	while lcm_er_list:
-		(v1, v2) = lcm_er_list.pop()
-		common_neis_er = set(neisets_er[v1]) & set(neisets_er[v2])
-		linkage_covariance_matrix_er[v1, v2] = (len(common_neis_er)/n_er) - (len(neisets_er[v1]) * len(neisets_er[v2]))/n_er**2
-		linkage_covariance_matrix_er[v2, v1] = linkage_covariance_matrix_er[v1, v2]
-
-	# for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_er,k=0)).T:
-	# 	if (v1 != v2):
-	# 		try:
-	# 			common_neis_er = neisets_er[v1].intersection(neisets_er[v2])
-	# 			linkage_covariance_matrix_er[v1, v2] = (len(common_neis_er)/n_er) - (len(neisets_er[v1]) * len(neisets_er[v2]))/n_er**2
-	# 			linkage_covariance_matrix_er[v2, v1] = linkage_covariance_matrix_er[v1, v2]
-	# 		except:
-	# 			continue
+	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_er,k=0)).T:
+		if (v1 != v2):
+			try:
+				common_neis_er = neisets_er[v1].intersection(neisets_er[v2])
+				linkage_covariance_matrix_er[v1, v2] = (len(common_neis_er)/n_er) - (len(neisets_er[v1]) * len(neisets_er[v2]))/n_er**2
+				linkage_covariance_matrix_er[v2, v1] = linkage_covariance_matrix_er[v1, v2]
+			except:
+				continue
 
 	logging.info('Populating the linkage covariance matrix random')
 	
-	lcm_random_list = list(itertools.combinations(neisets_random.keys(),2))
-	
-	while lcm_random_list:
-		(v1, v2) = lcm_random_list.pop()
-		common_neis_random = set(neisets_random[v1]) & set(neisets_random[v2])
-		linkage_covariance_matrix_random[v1, v2] = (len(common_neis_er)/n_random) - (len(neisets_random[v1]) * len(neisets_random[v2]))/n_random**2
-		linkage_covariance_matrix_random[v2, v1] = linkage_covariance_matrix_random[v1, v2]
-
-	# for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_random,k=0)).T:
-	# 	if (v1 != v2):
-	# 		try:
-	# 			common_neis_random = neisets_random[v1].intersection(neisets_random[v2])
-	# 			linkage_covariance_matrix_random[v1, v2] = (len(common_neis_random)/n_random) - (len(neisets_random[v1]) * len(neisets_random[v2]))/n_random**2
-	# 			linkage_covariance_matrix_random[v2, v1] = linkage_covariance_matrix_random[v1, v2]
-	# 		except:
-	# 			continue
+	for v1, v2 in np.vstack(np.triu_indices_from(linkage_covariance_matrix_random,k=0)).T:
+		if (v1 != v2):
+			try:
+				common_neis_random = neisets_random[v1].intersection(neisets_random[v2])
+				linkage_covariance_matrix_random[v1, v2] = (len(common_neis_random)/n_random) - (len(neisets_random[v1]) * len(neisets_random[v2]))/n_random**2
+				linkage_covariance_matrix_random[v2, v1] = linkage_covariance_matrix_random[v1, v2]
+			except:
+				continue
 
 	logging.info('Linkage covariance matrix done')
 	
@@ -147,17 +102,15 @@ def linkage_covariance(file_path, order_no):
 	
 	logging.info('Sorting each row in linkage covariance matrix in descending order')
 	
-	for i in xrange(0, n_ori):
-		linkage_covariance_matrix_ori[linkage_covariance_matrix_ori[i, :].argsort()][::-1]
+	for i in range(0, n_ori):
+		linkage_covariance_matrix_ori[linkage_covariance_matrix_ori[i, :][::-1].sort()]
 	
-	for i in xrange(0, n_er):
+	for i in range(0, n_er):
 		linkage_covariance_matrix_er[linkage_covariance_matrix_er[i, :][::-1].sort()]
 	
-	for i in xrange(0, n_random):
+	for i in range(0, n_random):
 		linkage_covariance_matrix_random[linkage_covariance_matrix_random[i, :][::-1].sort()]
 	
-	np.savetxt("ori_igraph", linkage_covariance_matrix_ori, delimiter=',')
-
 	logging.info('Sorted the matrix successfully')
 	
 	logging.debug('RLC Original!\n')
@@ -175,18 +128,9 @@ def linkage_covariance(file_path, order_no):
 	rlc_er = linkage_covariance_matrix_er.copy()
 	rlc_random = linkage_covariance_matrix_random.copy()
 
-	# for i in reversed(xrange(0, n_ori)):
-	# 	rlc_ori = rlc_ori[rlc_ori[:, i].argsort()][::-1]
-
-	call('sort -t$\',\' -nrk1 ori_igraph > sorted_ori_igraph')
-
-	rlc_ori = np.loadtxt("sorted_ori_igraph", delimiter=',')
-
-	for i in reversed(xrange(0, n_er)):
-		rlc_er = rlc_er[rlc_er[:, 0].argsort()][::-1]
-	
-	for i in reversed(xrange(0, n_random)):
-		rlc_random = rlc_random[rlc_random[:, 0].argsort()][::-1]
+	rlc_ori = rlc_ori[rlc_ori[:, 0].argsort()][::-1]
+	rlc_er = rlc_er[rlc_er[:, 0].argsort()][::-1]
+	rlc_random = rlc_random[rlc_random[:, 0].argsort()][::-1]
 
 	logging.info('Sorted the matrix by each column in ascending order')
 	
@@ -224,8 +168,6 @@ def linkage_covariance(file_path, order_no):
 
 	logging.info('Normalized the matrix successfully')
 
-	np.set_printoptions(threshold='nan')
-	
 	pearson_distance_ori = list()
 	for i in range(1, n_ori):
 		if math.isnan(pearsonr(rlc_ori[i,:], rlc_ori[i,:])[0]) == False:
@@ -252,11 +194,7 @@ def linkage_covariance(file_path, order_no):
 	logging.info("The pearson distance between first row and various rows of the Random graph!\n")
 	logging.info(np.sort(pearson_distance_random))
 
-	utc_datetime = datetime.datetime.utcnow()
-	formatted_string = utc_datetime.strftime("%Y-%m-%d-%H%MZ")
-	filename = 'output_%s.txt'% formatted_string
-
-	with open(filename, "a") as myfile:
+	with open("output.txt", "a") as myfile:
 		myfile.write("Original\n")
 		myfile.write(str(np.sort(pearson_distance_ori)))
 		myfile.write("\nER\n")
