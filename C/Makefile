@@ -5,7 +5,7 @@ LIB=`pkg-config --libs igraph`
 BIN=
 SRC=QuantifyingInherentGraphAnonymity.c
 OBJ=$(SRC:.cpp=.o)
-EXEC=pj3cpu
+EXEC=LCMCpu
 NVFLAGS=-arch=sm_30
 
 
