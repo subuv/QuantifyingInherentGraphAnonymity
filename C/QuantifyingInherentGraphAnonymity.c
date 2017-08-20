@@ -59,7 +59,6 @@ int main(int argc, char** argv) {
 	int numThreads = 32;
 	//checks arguments
 	if(argc < 3) {
-
 		printf("\nToo few arguments. Usage: ./%s graphFile all/out\n", argv[0]);
 		return -1;
 	}
@@ -76,8 +75,7 @@ int main(int argc, char** argv) {
 	//opens graph file passed as 1st argument
 	FILE *inputFile;
 	inputFile = fopen(argv[1], "r");
-	if(inputFile == NULL)
-	{
+	if(inputFile == NULL) {
 		printf("Could not load input file...\n");
 		return 1;
 	}
@@ -92,31 +90,24 @@ int main(int argc, char** argv) {
 
 	LCM_CPU(graph, OUTALL);
 
-	//function
-	// linkage_covariance(graph);
-
 	gettimeofday(&stop, NULL);
 	printf("took %2f\n", (stop.tv_sec - start.tv_sec) * 1000.0f + (stop.tv_usec - start.tv_usec) / 1000.0f);
 	return 0;
 }
 
-int compare (const void * a, const void * b)
-{
+int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
-int commonNeighbor(long int arr1[], long int arr2[], int m, int n)
-{
+int commonNeighbor(long int arr1[], long int arr2[], int m, int n) {
   int i = 0, j = 0;
   int numCommon = 0;
-  while (i < m && j < n)
-  {
+  while (i < m && j < n) {
     if (arr1[i] < arr2[j])
       i++;
     else if (arr2[j] < arr1[i])
       j++;
-    else /* if arr1[i] == arr2[j] */
-    {
+    else /* if arr1[i] == arr2[j] */ {
       // printf(" %d ", arr2[j++]);
       j++;
       i++;
@@ -126,22 +117,18 @@ int commonNeighbor(long int arr1[], long int arr2[], int m, int n)
   return numCommon;
 }
 
-int equalArray(Array a1, Array a2)
-{
-	if( a1.used != a2.used)
-	{
+int equalArray(Array a1, Array a2) {
+	if( a1.used != a2.used) {
 		return 0;
 	}
-	for(int i = 0; i < a1.used; i++)
-	{
+	for(int i = 0; i < a1.used; i++) {
 		if(a1.array[i] != a2.array[i])
 			return 0;
 	}
 	return 1;
-
 }
-void LCM_CPU(igraph_t &graph, igraph_neimode_t OUTALL)
-{
+
+void LCM_CPU(igraph_t &graph, igraph_neimode_t OUTALL) {
 	int n_vertices = igraph_vcount(&graph);
 	igraph_adjlist_t al;
 	igraph_adjlist_init(&graph, &al, OUTALL);
@@ -157,22 +144,18 @@ void LCM_CPU(igraph_t &graph, igraph_neimode_t OUTALL)
 
 		adjList[i] = (long int *) calloc(igraph_vector_size(adjVec), sizeof(long int));
 		sizeAdj[i] = (int) igraph_vector_size(adjVec);
-		for(int k = 0; k< igraph_vector_size(adjVec); k++)
-		{
+		for(int k = 0; k< igraph_vector_size(adjVec); k++) {
 			adjList[i][k] = (long int) VECTOR(*adjVec)[k];
 		}
 	}
 
-	for(int i = 0; i< n_vertices; i++)
-	{
+	for(int i = 0; i< n_vertices; i++) {
 		qsort(adjList[i], sizeAdj[i], sizeof(long int), compare);
 	}
-
 	LCM_CPU_Kernel(adjList, sizeAdj, n_vertices);
 }
 
-void LCM_CPU_Kernel(long int **adjList, int *sizeAdj, int n_vertices)
-{
+void LCM_CPU_Kernel(long int **adjList, int *sizeAdj, int n_vertices) {
 	Array *lcmMatrix;
 	lcmMatrix = (Array *) calloc(n_vertices, sizeof(Array));
 	for(int i = 0; i < n_vertices; i++) {
@@ -180,14 +163,12 @@ void LCM_CPU_Kernel(long int **adjList, int *sizeAdj, int n_vertices)
 	}
 	//finds similar vertices
 	for(int i = 0; i < n_vertices; i++) {
-		
 		long int* neisVec1 = adjList[i];
 		//inner loop
 		for(int j = i+1; j < n_vertices; j++) {
 			long int* neisVec2 = adjList[j];
 			int compVec = commonNeighbor(neisVec1, neisVec2, sizeAdj[i], sizeAdj[j]);
-			if (compVec > 0)
-			{
+			if (compVec > 0) {
 				insertArray(&lcmMatrix[i], compVec);
 				insertArray(&lcmMatrix[j], compVec);
 			}
@@ -196,12 +177,6 @@ void LCM_CPU_Kernel(long int **adjList, int *sizeAdj, int n_vertices)
 	printf("Finished Computing LCM\n");
 	for(int i = 0; i < n_vertices; i++) {
 		qsort(lcmMatrix[i].array, lcmMatrix[i].used, sizeof(int), compare);
-		// printf("%d:\t", i);
-		// for(int j=0;j < lcmMatrix[i].used; j++)
-		// {
-		// 	printf("%d-", lcmMatrix[i].array[j]);
-		// }
-		// printf("\n");
 	}
 	
 	long int histo[n_vertices];
@@ -214,8 +189,7 @@ void LCM_CPU_Kernel(long int **adjList, int *sizeAdj, int n_vertices)
 			if(lcmMatrix[i].used != lcmMatrix[j].used)
 				continue;
 			int eq = equalArray(lcmMatrix[i],lcmMatrix[j]);
-			if(eq == 1)
-			{				
+			if(eq == 1) {				
 				count++;
 			}
 		}
